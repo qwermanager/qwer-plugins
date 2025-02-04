@@ -1,6 +1,6 @@
-import os
-import zipfile
+import logging
 from pathlib import Path
+import zipfile
 import winreg
 import shutil
 from request_manager import RequestManager
@@ -23,7 +23,7 @@ class DownloadThread(QThread):
             if isinstance(response, str):
                 self.error.emit(response)
                 self.finished.emit(False)
-                return
+                raise Exception(response)
             with open(self.path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
@@ -46,7 +46,10 @@ class NodePlugin(Plugin):
 
     def get_available_versions(self) -> list[str]:
         """获取可用的 Node.js 版本列表"""
-        result = self.request_manager.get("https://nodejs.org/dist/index.json")
+        url = "https://nodejs.org/dist/index.json"
+        result = self.request_manager.get(url)
+        if isinstance(result, str):
+            raise Exception(f"获取 Node.js 版本列表失败: {result}")  # 抛出异常
         if isinstance(result, list):
             versions = []
             for item in result:
@@ -56,7 +59,8 @@ class NodePlugin(Plugin):
                     version += f" (LTS: {lts})"
                 versions.append(version)
             return versions
-        return []
+        else:
+            raise Exception("获取 Node.js 版本列表失败: 返回数据格式错误")  # 抛出异常
 
     def get_installed_versions(self) -> list[str]:
         """获取已安装的 Node.js 版本列表"""
@@ -72,7 +76,7 @@ class NodePlugin(Plugin):
         
         # 开始下载
         if not self._download_file(download_url, download_path):
-            return "下载失败"
+            raise Exception("下载失败")  # 抛出异常
         return "下载已开始"
 
     def _download_file(self, url, path):
@@ -84,14 +88,17 @@ class NodePlugin(Plugin):
 
     def _handle_download_complete(self, success: bool, download_path: Path):
         """处理下载完成"""
-        if success and self._is_valid_zip(download_path):
-            clean_version = download_path.stem.split("-")[1]
-            install_dir = self.node_dir / clean_version
-            self._extract_zip(download_path, install_dir)
-            try:
-                download_path.unlink()
-            except Exception as e:
-                print(f"删除压缩文件失败: {e}")
+        if not success:
+            raise Exception("下载失败")  # 抛出异常
+        if not self._is_valid_zip(download_path):
+            raise Exception("下载的文件不是有效的 ZIP 文件")  # 抛出异常
+        clean_version = download_path.stem.split("-")[1]
+        install_dir = self.node_dir / clean_version
+        self._extract_zip(download_path, install_dir)
+        try:
+            download_path.unlink()
+        except Exception as e:
+            logging.error(f"删除压缩文件失败: {e}")
 
     def uninstall(self, version: str) -> str:
         """卸载指定版本的 Node.js"""
@@ -102,8 +109,9 @@ class NodePlugin(Plugin):
                 shutil.rmtree(install_dir)
                 return f"已卸载 Node.js {clean_version}"
             except PermissionError as e:
-                return f"卸载失败: {e}"
-        return f"未找到 Node.js {clean_version}"
+                raise Exception(f"卸载失败: {e}")  # 抛出异常
+        else:
+            raise Exception(f"未找到 Node.js {clean_version}")  # 抛出异常
 
     def set_default(self, version: str) -> str:
         """将指定版本设为默认版本"""
@@ -118,7 +126,8 @@ class NodePlugin(Plugin):
             node_bin_dir = install_dir / f"node-{clean_version}-win-x64"
             self._update_environment_variable(node_bin_dir)
             return f"已切换到 Node.js {clean_version}"
-        return f"未找到 Node.js {clean_version}"
+        else:
+            raise Exception(f"未找到 Node.js {clean_version}")  # 抛出异常
 
     def get_current_version(self) -> str|None:
         """获取当前使用的版本"""
