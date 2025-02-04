@@ -51,10 +51,14 @@ class GoPlugin(Plugin):
         """获取可用的 Go 版本列表"""
         url = "https://golang.org/dl/?mode=json"
         result = self.request_manager.get(url)
-        if isinstance(result, list):
+        
+        if isinstance(result, str):  # 如果返回的是错误信息
+            raise Exception(f"获取 Go 版本列表失败: {result}")  # 抛出异常
+        
+        if isinstance(result, list):  # 如果返回的是有效数据
             return [item["version"] for item in result]
         else:
-            return []
+            raise Exception("获取 Go 版本列表失败: 返回数据格式错误")  # 抛出异常
 
     def get_installed_versions(self) -> list[str]:
         """获取已安装的 Go 版本列表"""
